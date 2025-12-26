@@ -1,13 +1,99 @@
 import os
-import streamlit as st
 import openai
-from parse_hh import get_html, extract_vacancy_data, extract_resume_data
-from pdf_resume_parser import extract_resume_data_from_pdf
+import streamlit as st
 from dotenv import load_dotenv
+from parse_hh import extract_vacancy_data, extract_resume_data
+from pdf_resume_parser import extract_resume_data_from_pdf
 
 load_dotenv()
 
 OPENAI_API_KEY=os.environ.get('OPENAI_API_KEY')
+
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+def request_gpt(system_prompt, user_prompt):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},  
+            {"role": "user", "content": user_prompt},     
+        ],
+        max_tokens=1000,
+        temperature=0,
+    )
+    return response.choices[0].message.content
+
+# -----------------------------
+# CONFIG
+# -----------------------------
+st.set_page_config(
+    page_title="CV Scoring App",
+    layout="wide"
+)
+
+# -----------------------------
+# STYLES
+# -----------------------------
+st.markdown("""
+<style>
+/* Общий фон */
+.stApp {
+    background-color: #f7f8fa;
+}
+
+/* Заголовки */
+h1, h2, h3 {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+/* Карточки */
+.card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+/* Primary button */
+div.stButton > button {
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    color: white;
+    border-radius: 12px;
+    padding: 10px 22px;
+    font-weight: 600;
+    border: none;
+}
+
+div.stButton > button:hover {
+    background: linear-gradient(135deg, #4338ca, #4f46e5);
+    transform: scale(1.02);
+}
+
+/* Text areas */
+textarea {
+    border-radius: 10px !important;
+}
+
+/* Result block */
+.result-box {
+    background: #0f172a;
+    color: #e5e7eb;
+    padding: 24px;
+    border-radius: 14px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+/* Divider */
+hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #c7d2fe, transparent);
+}
+</style>
+""", unsafe_allow_html=True)
 
 VACANCY_GEN_SYSTEM_PROMPT = """
 Ты генератор описаний вакансий для банковского сектора.
@@ -89,131 +175,109 @@ SYSTEM_PROMPT = """
 Потом представь результат в виде оценки от 1 до 10.
 """.strip()
 
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-def request_gpt(system_prompt, user_prompt):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},  
-            {"role": "user", "content": user_prompt},     
-        ],
-        max_tokens=1000,
-        temperature=0,
-    )
-    return response.choices[0].message.content
-
 # UI
-st.title('CV Scoring App')
-st.subheader("📝 Генерация описания вакансии")
+# -----------------------------
+# HEADER
+# -----------------------------
+st.title("🧠 CV Scoring App")
+st.caption("AI-инструмент для оценки соответствия кандидатов вакансии")
 
-vacancy_title = st.text_input("Введите наименование вакансии (например: Аудитор)")
+# -----------------------------
+# 1️⃣ ВАКАНСИЯ
+# -----------------------------
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.header("1️⃣ Вакансия")
 
-if st.button("Сгенерировать описание вакансии"):
-    if not vacancy_title.strip():
-        st.warning("Введите наименование вакансии")
-    else:
-        with st.spinner("Генерируем описание вакансии..."):
-            try:
-                vacancy_prompt = f"Название вакансии: {vacancy_title}"
-                vacancy_description = request_gpt(
-                    VACANCY_GEN_SYSTEM_PROMPT,
-                    vacancy_prompt
-                )
-
-                st.subheader("📄 Описание вакансии")
-                st.text_area(
-                    label="",
-                    value=vacancy_description,
-                    height=300
-                )
-
-            except Exception as e:
-                st.error(f"Ошибка при генерации описания: {e}")
-
-
-st.subheader("📄 Источник резюме")
-
-resume_source = st.radio(
-    "Выберите источник резюме",
-    options=["Ссылка hh.ru", "Загрузить PDF файл"]
-)
-
-resume_text = None
-
-if resume_source == "Ссылка hh.ru":
-    cv_url = st.text_area("Введите ссылку на резюме hh.ru")
-
-if resume_source == "Загрузить PDF файл":
-    uploaded_file = st.file_uploader(
-        "Загрузите PDF-файл с резюме",
-        type=["pdf"]
-    )
-
-st.subheader("📌 Источник вакансии")
-
-vacancy_source = st.radio(
-    "Выберите источник вакансии",
-    options=["Ссылка hh.ru", "Вставить текст вакансии"]
+vac_tab1, vac_tab2, vac_tab3 = st.tabs(
+    ["✍ Генерация по названию", "📄 Вставить текст", "🔗 hh.ru"]
 )
 
 job_text = None
 
-if vacancy_source == "Ссылка hh.ru":
-    job_url = st.text_area("Введите ссылку на вакансию hh.ru")
+with vac_tab1:
+    vacancy_title = st.text_input("Название вакансии")
+    if st.button("Сгенерировать описание вакансии"):
+        if vacancy_title:
+            job_text = request_gpt(VACANCY_GEN_SYSTEM_PROMPT, f"Название вакансии: {vacancy_title}")
+            st.text_area("Описание вакансии", job_text, height=300)
 
-if vacancy_source == "Вставить текст вакансии":
+with vac_tab2:
     job_text_manual = st.text_area(
         "Вставьте текст вакансии",
-        height=300,
-        placeholder="Вставьте описание вакансии целиком..."
+        height=300
     )
+    if job_text_manual:
+        job_text = job_text_manual
 
-if st.button("Проанализировать соответствие"):
-    with st.spinner("Обрабатываем данные..."):
+with vac_tab3:
+    vacancy_url = st.text_input("Ссылка на вакансию hh.ru")
+    if vacancy_url:
         try:
-            # --- ВАКАНСИЯ ---
-            if vacancy_source == "Ссылка hh.ru":
-                if not job_url.strip():
-                    st.warning("Введите ссылку на вакансию")
-                    st.stop()
-
-                job_html = get_html(job_url).text
-                job_text = extract_vacancy_data(job_html)
-
-            elif vacancy_source == "Вставить текст вакансии":
-                if not job_text_manual.strip():
-                    st.warning("Вставьте текст вакансии")
-                    st.stop()
-
-                job_text = job_text_manual.strip()
-
-            # --- РЕЗЮМЕ ---
-            if resume_source == "Ссылка hh.ru":
-                if not cv_url.strip():
-                    st.warning("Введите ссылку на резюме")
-                    st.stop()
-
-                resume_html = get_html(cv_url).text
-                resume_text = extract_resume_data(resume_html)
-
-            elif resume_source == "Загрузить PDF файл":
-                if uploaded_file is None:
-                    st.warning("Загрузите PDF-файл с резюме")
-                    st.stop()
-
-                resume_text = extract_resume_data_from_pdf(
-                    pdf_file=uploaded_file,
-                    client=client,
-                    system_prompt=OCR_RESUME_SYSTEM_PROMPT
-                )
-
-            # --- GPT СКОРИНГ ---
-            prompt = f"# ВАКАНСИЯ\n{job_text}\n\n# РЕЗЮМЕ\n{resume_text}"
-            response = request_gpt(SYSTEM_PROMPT, prompt)
-
-            st.subheader("📊 Результат анализа")
-            st.markdown(response)
-
+            job_text = extract_vacancy_data(vacancy_url)
+            st.success("Вакансия загружена с hh.ru")
         except Exception as e:
-            st.error(f"Произошла ошибка: {e}")
+            st.error(f"Ошибка загрузки вакансии: {e}")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# 2️⃣ РЕЗЮМЕ
+# -----------------------------
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.header("2️⃣ Резюме")
+
+res_tab1, res_tab2, res_tab3 = st.tabs(
+    ["📎 PDF", "📝 Вставить текст", "🔗 hh.ru"]
+)
+
+resume_text = None
+
+with res_tab1:
+    uploaded_pdf = st.file_uploader("Загрузите PDF резюме", type=["pdf"], key="resume_pdf")
+    if uploaded_pdf:
+        try:
+            resume_text = extract_resume_data_from_pdf(uploaded_pdf, system_prompt=OCR_RESUME_SYSTEM_PROMPT)
+            st.success("PDF обработан")
+        except Exception as e:
+            st.error(f"Ошибка при обработке PDF: {e}")
+
+with res_tab2:
+    resume_text_manual = st.text_area("Вставьте текст резюме", height=300)
+    if resume_text_manual:
+        resume_text = resume_text_manual
+
+with res_tab3:
+    resume_url = st.text_input("Ссылка на резюме hh.ru")
+    if resume_url:
+        try:
+            resume_text = extract_resume_data(resume_url)
+            st.success("Резюме загружено с hh.ru")
+        except Exception as e:
+            st.error(f"Ошибка при загрузке резюме: {e}")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# 3️⃣ АНАЛИЗ
+# -----------------------------
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.header("3️⃣ Анализ соответствия")
+
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    analyze_btn = st.button("▶ Проанализировать кандидата", use_container_width=True)
+
+if analyze_btn:
+    if not job_text or not resume_text:
+        st.warning("Необходимо загрузить вакансию и резюме")
+        st.stop()
+
+    with st.spinner("Анализируем кандидата..."):
+        prompt = f"# ВАКАНСИЯ\n{job_text}\n\n# РЕЗЮМЕ\n{resume_text}"
+        result = request_gpt(SYSTEM_PROMPT, prompt)
+
+    st.subheader("📊 Результат анализа")
+    st.markdown(f'<div class="result-box">{result.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+st.caption("© AI HR Assistant")
