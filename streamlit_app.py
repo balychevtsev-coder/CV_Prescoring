@@ -236,7 +236,7 @@ with res_tab1:
     uploaded_pdf = st.file_uploader("Загрузите PDF резюме", type=["pdf"], key="resume_pdf")
     if uploaded_pdf:
         try:
-            resume_text = extract_resume_data_from_pdf(uploaded_pdf, system_prompt=OCR_RESUME_SYSTEM_PROMPT)
+            resume_text = extract_resume_data_from_pdf(pdf_file=uploaded_pdf, client=client, system_prompt=OCR_RESUME_SYSTEM_PROMPT)
             st.success("PDF обработан")
         except Exception as e:
             st.error(f"Ошибка при обработке PDF: {e}")
